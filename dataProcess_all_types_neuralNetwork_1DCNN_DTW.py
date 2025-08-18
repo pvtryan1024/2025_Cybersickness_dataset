@@ -55,6 +55,8 @@ def bin_value(value):
     elif(value <= 20):
         return 4
 
+vectorized_bin_value = np.vectorize(bin_value)
+
 samples = []
 X_list = []
 y_list = []
@@ -88,6 +90,7 @@ for csv_file in csv_files:
     
     # Extract target: column index 1
     y = df.iloc[:, 1].values          # shape: (400,) — or pick one value if needed
+    y = vectorized_bin_value(y)
 
     # Append
     X_list.append(x)

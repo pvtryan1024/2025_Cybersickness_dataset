@@ -28,10 +28,7 @@ from tensorflow.keras.layers import (
     TimeDistributed,
     LSTM,
     Concatenate,
-    RepeatVector,
-    MultiHeadAttention, 
-    LayerNormalization,
-    GlobalAveragePooling1D
+    RepeatVector
 )
 from sklearn.model_selection import train_test_split
 import dtw
@@ -65,7 +62,6 @@ def bin_value(value):
         return 4
 
 vectorized_bin_value = np.vectorize(bin_value)
-
 
 samples = []
 X_list = []
@@ -121,8 +117,7 @@ for csv_file in csv_files:
 
     # Extract target: column index 1
     y = df.iloc[:, 1].values          # shape: (400,) — or pick one value if needed
-    # y = vectorized_bin_value(y)
-
+    y = vectorized_bin_value(y)
 
     string_mask = np.vectorize(lambda d: isinstance(d, str))(x_final)
 
@@ -148,49 +143,42 @@ print(X[0][0])
 # print("y shape:", y.shape)
 
 
-# --- Hyperparameters ---
-time_steps = 420
-time_features = 7
-static_features = 4
-model_dim = 64
-num_heads = 4
-dropout_rate = 0.2
+# Inputs
+ts_input = Input(shape=(420, 7), name='time_series_input')    # dynamic input
+static_input = Input(shape=(4,), name='static_input')         # static input
 
+# LSTM layers
+x = LSTM(128, return_sequences=True)(ts_input)  # keep sequence output
+x = Dropout(0.2)(x)
+x = BatchNormalization()(x)
 
-# --- Inputs ---
-time_input = Input(shape=(time_steps, time_features), name='time_series_input')   # (420, 8)
-static_input = Input(shape=(static_features,), name='static_input')               # (3,)
+# x = LSTM(128, return_sequences=True)(x)
+# x = Dropout(0.2)(x)
+# x = BatchNormalization()(x)
 
+x = LSTM(64, return_sequences=True)(x)
+x = Dropout(0.2)(x)
+x = BatchNormalization()(x)
 
-# --- Transformer Block ---
-x = Dense(model_dim)(time_input)  # Project to model_dim
-attn_output = MultiHeadAttention(num_heads=num_heads, key_dim=model_dim)(x, x)
-x = LayerNormalization()(x + attn_output)  # Residual connection + norm
+# x = LSTM(32, return_sequences=True)(x)
+# x = Dropout(0.2)(x)
 
-ffn_output = Dense(model_dim, activation='relu')(x)
-ffn_output = Dropout(dropout_rate)(ffn_output)
-x = LayerNormalization()(x + ffn_output)
+# Repeat static input across 420 timesteps
+repeated_static = RepeatVector(420)(static_input)  # shape: (batch, 420, 3)
 
-# --- Global Pooling (combine time steps) ---
-x = GlobalAveragePooling1D()(x)  # Shape: (batch, model_dim)
+# Merge time-dependent LSTM output with repeated static input
+combined = Concatenate(axis=-1)([x, repeated_static])  # shape: (batch, 420, 64+3)
 
-# --- Process static input ---
-s = Dense(16, activation='relu')(static_input)
+# combined = Dense(64, activation='relu')(combined)
+# combined = BatchNormalization()(combined)
+# combined = Dropout(0.2)(combined)
 
-# --- Concatenate time + static features ---
-combined = Concatenate()([x, s])
+# Output layer: predict one value per timestep
+output = TimeDistributed(Dense(1))(combined)  # shape: (batch, 420, 1)
 
-# --- Output layer for regression ---
-# output = Dense(1, name='regression_output')(combined)
-output = Dense(420, name='regression_output')(combined)
-
-# --- Build model ---
-model = Model(inputs=[time_input, static_input], outputs=output)
-
-# --- Compile ---
-model.compile(optimizer='adam', loss='mse', metrics=['mae'])
-
-# --- Summary ---
+# Build and compile the model
+model = Model(inputs=[ts_input, static_input], outputs=output)
+model.compile(optimizer='adam', loss='mse')
 model.summary()
 
 # Time-series features (first 8 columns)
@@ -230,20 +218,17 @@ X_ts_train, X_ts_test, X_static_train, X_static_test, y_train, y_test = train_te
     X_ts, X_static_scaled, y, test_size=0.2, random_state=42
 )
 
-# # model_cnn.fit(X_train, y_train, epochs=30, batch_size=32, validation_data=(X_test, y_test))
-# model.fit(
-#     x={'time_series_input': X_ts_train, 'static_input': X_static_train},
-#     y=y_train,
-#     validation_data=(
-#         {'time_series_input': X_ts_test, 'static_input': X_static_test},
-#         y_test
-#     ),
-#     batch_size=32,
-#     epochs=20
-# )
-
-# y = your target variable, shape: (429,)
-model.fit([X_ts, X_static_scaled], y, epochs=30, batch_size=16, validation_split=0.2)
+# model_cnn.fit(X_train, y_train, epochs=30, batch_size=32, validation_data=(X_test, y_test))
+model.fit(
+    x={'time_series_input': X_ts_train, 'static_input': X_static_train},
+    y=y_train,
+    validation_data=(
+        {'time_series_input': X_ts_test, 'static_input': X_static_test},
+        y_test
+    ),
+    batch_size=32,
+    epochs=20
+)
 
 # y_pred = model_cnn.predict(X_test)
 # y_pred = model.predict(X_test)
@@ -253,9 +238,6 @@ y_pred = model.predict({
 })
 y_pred_flat = y_pred.flatten()
 y_test_flat = y_test.flatten()
-
-print(y_pred.shape)
-print(y_test.shape)
 
 rmse = np.sqrt(mean_squared_error(y_test_flat, y_pred_flat))
 mae = mean_absolute_error(y_test_flat, y_pred_flat)
@@ -293,7 +275,7 @@ for i in sampleIndex:
     distanceSum += dtw_result.distance
     plt.plot(y[i].squeeze(), label='True')
     plt.plot(y_pred1[i].squeeze(), label='Predicted')
-    plt.ylim(0, 20)
+    plt.ylim(0, 5)
     plt.title("LSTM Comparison (Sample " + str(i) + ")")
     plt.legend()
     plt.show()
