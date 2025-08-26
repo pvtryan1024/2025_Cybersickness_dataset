@@ -12,7 +12,9 @@ from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
 from scipy.optimize import minimize 
 from scipy.optimize import NonlinearConstraint
 import tensorflow as tf
+from tensorflow.keras import layers, Model
 from tensorflow.keras.models import Sequential,Model
+from tensorflow.keras.utils import plot_model
 # Repeat static input across time (broadcast it to match 420 steps)
 from tensorflow.keras.layers import (
     Input,
@@ -41,16 +43,18 @@ dir_path = os.path.dirname(os.path.realpath(__file__))
 # Get a list of all CSV files in a directory
 csv_files = glob.glob(dir_path + '/*.csv')
 
-default_csv = glob.glob(dir_path +"/default" + '/*.csv')
+# default_csv = glob.glob(dir_path +"/default" + '/*.csv')
 
-print(default_csv)
+# print(default_csv)
 
 # Create an empty dataframe to store the combined data
 combined_df = pd.DataFrame()
 
-axis_df = pd.read_csv(default_csv[0], header=None)
-axis_df = axis_df[[8,9,10,11]]
-print(axis_df)
+# axis_df = pd.read_csv(default_csv[0], header=None)
+# axis_df = axis_df[[8,9,10,11]]
+# print(axis_df)
+
+
 
 def bin_value(value):
     if(value < 4):
@@ -243,7 +247,7 @@ X_ts_train, X_ts_test, X_static_train, X_static_test, y_train, y_test = train_te
 # )
 
 # y = your target variable, shape: (429,)
-model.fit([X_ts, X_static_scaled], y, epochs=30, batch_size=16, validation_split=0.2)
+history = model.fit([X_ts, X_static_scaled], y, epochs=30, batch_size=16, validation_split=0.2)
 
 # y_pred = model_cnn.predict(X_test)
 # y_pred = model.predict(X_test)
@@ -294,9 +298,16 @@ for i in sampleIndex:
     plt.plot(y[i].squeeze(), label='True')
     plt.plot(y_pred1[i].squeeze(), label='Predicted')
     plt.ylim(0, 20)
-    plt.title("LSTM Comparison (Sample " + str(i) + ")")
+    plt.title("Transformer Comparison (Sample " + str(i) + ")")
     plt.legend()
     plt.show()
 
 print("total distance sum is : " + str(distanceSum) )
+
+plt.plot(history.history["loss"], label="train_loss")
+plt.plot(history.history["val_loss"], label="val_loss")
+plt.legend()
+plt.show()
+
+plot_model(model, to_file="model.png", show_shapes=True, show_layer_names=True)
 

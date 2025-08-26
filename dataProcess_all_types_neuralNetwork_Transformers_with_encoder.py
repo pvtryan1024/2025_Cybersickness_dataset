@@ -12,6 +12,7 @@ from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
 from scipy.optimize import minimize 
 from scipy.optimize import NonlinearConstraint
 import tensorflow as tf
+from tensorflow.keras import layers, Model
 from tensorflow.keras.models import Sequential,Model
 # Repeat static input across time (broadcast it to match 420 steps)
 from tensorflow.keras.layers import (
@@ -41,16 +42,50 @@ dir_path = os.path.dirname(os.path.realpath(__file__))
 # Get a list of all CSV files in a directory
 csv_files = glob.glob(dir_path + '/*.csv')
 
-default_csv = glob.glob(dir_path +"/default" + '/*.csv')
+# default_csv = glob.glob(dir_path +"/default" + '/*.csv')
 
-print(default_csv)
+# print(default_csv)
 
 # Create an empty dataframe to store the combined data
 combined_df = pd.DataFrame()
 
-axis_df = pd.read_csv(default_csv[0], header=None)
-axis_df = axis_df[[8,9,10,11]]
-print(axis_df)
+# axis_df = pd.read_csv(default_csv[0], header=None)
+# axis_df = axis_df[[8,9,10,11]]
+# print(axis_df)
+
+def build_transformer_with_static(seq_len, num_time_features, num_static_features,
+                                  num_heads=4, ff_dim=64, d_model=64, num_outputs=1):
+    # ----- Inputs -----
+    ts_input = layers.Input(shape=(seq_len, num_time_features), name="time_series")
+    static_input = layers.Input(shape=(num_static_features,), name="static")
+
+    # ----- Positional Encoding -----
+    pos_encoding = tf.range(start=0, limit=seq_len, delta=1)
+    pos_encoding = layers.Embedding(input_dim=seq_len, output_dim=d_model)(pos_encoding)
+    ts_proj = layers.Dense(d_model)(ts_input)
+    x = ts_proj + pos_encoding   # shape: (batch, seq_len, d_model)
+
+    # ----- Transformer Encoder Block -----
+    attn_output = layers.MultiHeadAttention(num_heads=num_heads, key_dim=d_model)(x, x)
+    x = layers.Add()([x, attn_output])
+    x = layers.LayerNormalization(epsilon=1e-6)(x)
+
+    ff_output = layers.Dense(ff_dim, activation="relu")(x)
+    ff_output = layers.Dense(d_model)(ff_output)
+    x = layers.Add()([x, ff_output])
+    x = layers.LayerNormalization(epsilon=1e-6)(x)
+
+    # ----- Merge Static Features -----
+    # Repeat static input across time dimension so each timestep sees the static info
+    static_repeated = layers.RepeatVector(seq_len)(static_input)   # (batch, seq_len, num_static_features)
+    x = layers.Concatenate(axis=-1)([x, static_repeated])          # (batch, seq_len, d_model + num_static_features)
+
+    # ----- Final Prediction (sequence-to-sequence) -----
+    outputs = layers.Dense(num_outputs)(x)  # (batch, seq_len, num_outputs)
+
+    model = Model(inputs=[ts_input, static_input], outputs=outputs)
+    return model
+
 
 def bin_value(value):
     if(value < 4):
@@ -148,49 +183,15 @@ print(X[0][0])
 # print("y shape:", y.shape)
 
 
-# --- Hyperparameters ---
-time_steps = 420
-time_features = 7
-static_features = 4
-model_dim = 64
-num_heads = 4
-dropout_rate = 0.2
+seq_len = 420
+num_time_features = 7   # your time-series features
+num_static_features = 4 # e.g., age, gender, survey, etc.
+num_outputs = 1         # predict one value per timestep
 
+model = build_transformer_with_static(seq_len, num_time_features, num_static_features,
+                                      num_heads=4, ff_dim=64, d_model=64, num_outputs=num_outputs)
 
-# --- Inputs ---
-time_input = Input(shape=(time_steps, time_features), name='time_series_input')   # (420, 8)
-static_input = Input(shape=(static_features,), name='static_input')               # (3,)
-
-
-# --- Transformer Block ---
-x = Dense(model_dim)(time_input)  # Project to model_dim
-attn_output = MultiHeadAttention(num_heads=num_heads, key_dim=model_dim)(x, x)
-x = LayerNormalization()(x + attn_output)  # Residual connection + norm
-
-ffn_output = Dense(model_dim, activation='relu')(x)
-ffn_output = Dropout(dropout_rate)(ffn_output)
-x = LayerNormalization()(x + ffn_output)
-
-# --- Global Pooling (combine time steps) ---
-x = GlobalAveragePooling1D()(x)  # Shape: (batch, model_dim)
-
-# --- Process static input ---
-s = Dense(16, activation='relu')(static_input)
-
-# --- Concatenate time + static features ---
-combined = Concatenate()([x, s])
-
-# --- Output layer for regression ---
-# output = Dense(1, name='regression_output')(combined)
-output = Dense(420, name='regression_output')(combined)
-
-# --- Build model ---
-model = Model(inputs=[time_input, static_input], outputs=output)
-
-# --- Compile ---
-model.compile(optimizer='adam', loss='mse', metrics=['mae'])
-
-# --- Summary ---
+model.compile(optimizer="adam", loss="mse", metrics=['mae'])
 model.summary()
 
 # Time-series features (first 8 columns)
@@ -247,10 +248,11 @@ model.fit([X_ts, X_static_scaled], y, epochs=30, batch_size=16, validation_split
 
 # y_pred = model_cnn.predict(X_test)
 # y_pred = model.predict(X_test)
-y_pred = model.predict({
-    'time_series_input': X_ts_test,
-    'static_input': X_static_test
-})
+# y_pred = model.predict({
+#     'time_series_input': X_ts_test,
+#     'static_input': X_static_test})
+y_pred = model.predict([X_ts_test, X_static_test])
+
 y_pred_flat = y_pred.flatten()
 y_test_flat = y_test.flatten()
 
@@ -266,10 +268,12 @@ print(f"Test MAE:  {mae:.4f}")
 print(f"R² Score:  {r2:.4f}")
 
 
-y_pred1 = model.predict({
-    'time_series_input': X_ts,
-    'static_input': X_static_scaled
-})
+# y_pred1 = model.predict({
+#     'time_series_input': X_ts,
+#     'static_input': X_static_scaled
+# })
+y_pred1 = model.predict([X_ts, X_static_scaled])
+
 y_pred_flat1 = y_pred1.flatten()
 y_flat = y.flatten()
 
