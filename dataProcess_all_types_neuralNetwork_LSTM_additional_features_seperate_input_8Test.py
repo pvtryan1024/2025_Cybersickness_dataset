@@ -38,16 +38,16 @@ dir_path = os.path.dirname(os.path.realpath(__file__))
 # Get a list of all CSV files in a directory
 csv_files = glob.glob(dir_path + '/*.csv')
 
-default_csv = glob.glob(dir_path +"/default" + '/*.csv')
+# default_csv = glob.glob(dir_path +"/default" + '/*.csv')
 
-print(default_csv)
+# print(default_csv)
 
-# Create an empty dataframe to store the combined data
-combined_df = pd.DataFrame()
+# # Create an empty dataframe to store the combined data
+# combined_df = pd.DataFrame()
 
-axis_df = pd.read_csv(default_csv[0], header=None)
-axis_df = axis_df[[8,9,10,11]]
-print(axis_df)
+# axis_df = pd.read_csv(default_csv[0], header=None)
+# axis_df = axis_df[[8,9,10,11]]
+# print(axis_df)
 
 def bin_value(value):
     if(value < 4):
@@ -162,9 +162,10 @@ x = BatchNormalization()(x)
 
 # Repeat static input across 420 timesteps
 repeated_static = RepeatVector(420)(static_input)  # shape: (batch, 420, 3)
+s = Dense(64, activation='relu')(repeated_static)
 
 # Merge time-dependent LSTM output with repeated static input
-combined = Concatenate(axis=-1)([x, repeated_static])  # shape: (batch, 420, 64+3)
+combined = Concatenate(axis=-1)([x, s])  # shape: (batch, 420, 64+3)
 
 # combined = Dense(64, activation='relu')(combined)
 # combined = BatchNormalization()(combined)
@@ -178,11 +179,11 @@ model = Model(inputs=[ts_input, static_input], outputs=output)
 model.compile(optimizer='adam', loss='mse')
 model.summary()
 
-# Time-series features (first 8 columns)
-X_ts = X[:, :, :7]  # shape: (429, 420, 8)
+# Time-series features (first 7 columns)
+X_ts = X[:, :, :7]  # shape: (429, 420, 7)
 
-# Static features (last 3 columns, just from first timestep since they don't vary)
-X_static = X[:, 0, 7:]  # shape: (429, 3)
+# Static features (last 4 columns, just from first timestep since they don't vary)
+X_static = X[:, 0, 7:]  # shape: (429, 4)
 
 # Split into numeric and categorical parts
 X_numeric = X_static[:, :2]  # age and survey
