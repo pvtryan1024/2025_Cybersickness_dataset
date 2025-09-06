@@ -198,7 +198,7 @@ model.compile(optimizer='adam', loss='mse', metrics=['mae'])
 model.summary()
 
 # Time-series features (first 8 columns)
-X_ts = X[:, :, [0,4,5,6] ]  # shape: (429, 420, 8)
+X_ts = X[:, :, [0,1,2,3] ]  # shape: (429, 420, 8)
 
 # Static features (last 3 columns, just from first timestep since they don't vary)
 X_static = X[:, 0, 7:]  # shape: (429, 3)
@@ -210,6 +210,18 @@ X_other   = X_static[:, 2:]  # gender or any other static features
 # Normalize numeric columns
 scaler = StandardScaler()
 X_numeric_scaled = scaler.fit_transform(X_numeric)
+
+
+# Define columns to clip
+clip_cols = [1, 2, 3]
+
+# Define clipping thresholds (per feature)
+clip_min = -25
+clip_max = 25
+
+# Clip only the selected features
+X_clipped = X_ts.copy()
+X_clipped[:, :, clip_cols] = np.clip(X_ts[:, :, clip_cols], clip_min, clip_max)
 
 # xtsShape = X_ts.shape
 # X_ts_reformed = X_ts.reshape(-1, 7)  # shape: (429*420, 7)
@@ -231,7 +243,7 @@ X_static_scaled = np.concatenate([X_numeric_scaled, X_other], axis=1)
 
 
 X_ts_train, X_ts_test, X_static_train, X_static_test, y_train, y_test = train_test_split(
-    X_ts, X_static_scaled, y, test_size=0.2, random_state=42
+    X_clipped, X_static_scaled, y, test_size=0.2, random_state=42
 )
 
 # # model_cnn.fit(X_train, y_train, epochs=30, batch_size=32, validation_data=(X_test, y_test))
@@ -247,7 +259,7 @@ X_ts_train, X_ts_test, X_static_train, X_static_test, y_train, y_test = train_te
 # )
 
 # y = your target variable, shape: (429,)
-history = model.fit([X_ts, X_static_scaled], y, epochs=30, batch_size=16, validation_split=0.2)
+history = model.fit([X_clipped, X_static_scaled], y, epochs=30, batch_size=16, validation_split=0.2)
 
 # y_pred = model_cnn.predict(X_test)
 # y_pred = model.predict(X_test)
@@ -271,7 +283,7 @@ print(f"R² Score:  {r2:.4f}")
 
 
 y_pred1 = model.predict({
-    'time_series_input': X_ts,
+    'time_series_input': X_clipped,
     'static_input': X_static_scaled
 })
 y_pred_flat1 = y_pred1.flatten()
