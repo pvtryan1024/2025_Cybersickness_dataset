@@ -12,9 +12,7 @@ from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
 from scipy.optimize import minimize 
 from scipy.optimize import NonlinearConstraint
 import tensorflow as tf
-from tensorflow.keras import layers, Model
 from tensorflow.keras.models import Sequential,Model
-from tensorflow.keras.utils import plot_model
 # Repeat static input across time (broadcast it to match 420 steps)
 from tensorflow.keras.layers import (
     Input,
@@ -30,10 +28,7 @@ from tensorflow.keras.layers import (
     TimeDistributed,
     LSTM,
     Concatenate,
-    RepeatVector,
-    MultiHeadAttention, 
-    LayerNormalization,
-    GlobalAveragePooling1D
+    RepeatVector
 )
 from sklearn.model_selection import train_test_split
 import dtw
@@ -47,14 +42,12 @@ csv_files = glob.glob(dir_path + '/*.csv')
 
 # print(default_csv)
 
-# Create an empty dataframe to store the combined data
-combined_df = pd.DataFrame()
+# # Create an empty dataframe to store the combined data
+# combined_df = pd.DataFrame()
 
 # axis_df = pd.read_csv(default_csv[0], header=None)
 # axis_df = axis_df[[8,9,10,11]]
 # print(axis_df)
-
-
 
 def bin_value(value):
     if(value < 4):
@@ -67,9 +60,6 @@ def bin_value(value):
         return 3
     elif(value <= 20):
         return 4
-
-vectorized_bin_value = np.vectorize(bin_value)
-
 
 samples = []
 X_list = []
@@ -125,8 +115,6 @@ for csv_file in csv_files:
 
     # Extract target: column index 1
     y = df.iloc[:, 1].values          # shape: (400,) — or pick one value if needed
-    # y = vectorized_bin_value(y)
-
 
     string_mask = np.vectorize(lambda d: isinstance(d, str))(x_final)
 
@@ -152,54 +140,50 @@ print(X[0][0])
 # print("y shape:", y.shape)
 
 
-# --- Hyperparameters ---
-time_steps = 420
-time_features = 7
-static_features = 4
-model_dim = 64
-num_heads = 4
-dropout_rate = 0.2
+# Inputs
+ts_input = Input(shape=(420, 7), name='time_series_input')    # dynamic input
+static_input = Input(shape=(4,), name='static_input')         # static input
 
+# LSTM layers
+x = LSTM(128, return_sequences=True)(ts_input)  # keep sequence output
+x = Dropout(0.2)(x)
+x = BatchNormalization()(x)
 
-# --- Inputs ---
-time_input = Input(shape=(time_steps, time_features), name='time_series_input')   # (420, 8)
+# x = LSTM(128, return_sequences=True)(x)
+# x = Dropout(0.2)(x)
+# x = BatchNormalization()(x)
 
+x = LSTM(64, return_sequences=True)(x)
+x = Dropout(0.2)(x)
+x = BatchNormalization()(x)
 
+# x = LSTM(32, return_sequences=True)(x)
+# x = Dropout(0.2)(x)
 
-# --- Transformer Block ---
-x = Dense(model_dim)(time_input)  # Project to model_dim
-attn_output = MultiHeadAttention(num_heads=num_heads, key_dim=model_dim)(x, x)
-x = LayerNormalization()(x + attn_output)  # Residual connection + norm
+# Repeat static input across 420 timesteps
+repeated_static = RepeatVector(420)(static_input)  # shape: (batch, 420, 3)
+s = Dense(64, activation='relu')(repeated_static)
 
-ffn_output = Dense(model_dim, activation='relu')(x)
-ffn_output = Dropout(dropout_rate)(ffn_output)
-x = LayerNormalization()(x + ffn_output)
+# Merge time-dependent LSTM output with repeated static input
+combined = Concatenate(axis=-1)([x, s])  # shape: (batch, 420, 64+3)
 
-# --- Global Pooling (combine time steps) ---
-x = GlobalAveragePooling1D()(x)  # Shape: (batch, model_dim)
+# combined = Dense(64, activation='relu')(combined)
+# combined = BatchNormalization()(combined)
+# combined = Dropout(0.2)(combined)
 
+# Output layer: predict one value per timestep
+output = TimeDistributed(Dense(1))(combined)  # shape: (batch, 420, 1)
 
-
-
-
-# --- Output layer for regression ---
-# output = Dense(1, name='regression_output')(combined)
-output = Dense(420, name='regression_output')(x)
-
-# --- Build model ---
-model = Model(inputs=[time_input], outputs=output)
-
-# --- Compile ---
-model.compile(optimizer='adam', loss='mse', metrics=['mae'])
-
-# --- Summary ---
+# Build and compile the model
+model = Model(inputs=[ts_input, static_input], outputs=output)
+model.compile(optimizer='adam', loss='mse')
 model.summary()
 
-# Time-series features (first 8 columns)
-X_ts = X[:, :, :7]  # shape: (429, 420, 8)
+# Time-series features (first 7 columns)
+X_ts = X[:, :, :7]  # shape: (429, 420, 7)
 
-# Static features (last 3 columns, just from first timestep since they don't vary)
-X_static = X[:, 0, 7:]  # shape: (429, 3)
+# Static features (last 4 columns, just from first timestep since they don't vary)
+X_static = X[:, 0, 7:]  # shape: (429, 4)
 
 # Split into numeric and categorical parts
 X_numeric = X_static[:, :2]  # age and survey
@@ -228,36 +212,30 @@ print(X_other[0])
 X_static_scaled = np.concatenate([X_numeric_scaled, X_other], axis=1)
 
 
-X_ts_train, X_ts_test, y_train, y_test = train_test_split(
-    X_ts, y, test_size=0.2, random_state=42
+X_ts_train, X_ts_test, X_static_train, X_static_test, y_train, y_test = train_test_split(
+    X_ts, X_static_scaled, y, test_size=0.2, random_state=42
 )
 
-# # model_cnn.fit(X_train, y_train, epochs=30, batch_size=32, validation_data=(X_test, y_test))
-# model.fit(
-#     x={'time_series_input': X_ts_train, 'static_input': X_static_train},
-#     y=y_train,
-#     validation_data=(
-#         {'time_series_input': X_ts_test, 'static_input': X_static_test},
-#         y_test
-#     ),
-#     batch_size=32,
-#     epochs=20
-# )
-
-# y = your target variable, shape: (429,)
-history = model.fit([X_ts], y, epochs=30, batch_size=16, validation_split=0.2)
+# model_cnn.fit(X_train, y_train, epochs=30, batch_size=32, validation_data=(X_test, y_test))
+model.fit(
+    x={'time_series_input': X_ts_train, 'static_input': X_static_train},
+    y=y_train,
+    validation_data=(
+        {'time_series_input': X_ts_test, 'static_input': X_static_test},
+        y_test
+    ),
+    batch_size=32,
+    epochs=20
+)
 
 # y_pred = model_cnn.predict(X_test)
 # y_pred = model.predict(X_test)
 y_pred = model.predict({
-    'time_series_input': X_ts_test
-
+    'time_series_input': X_ts_test,
+    'static_input': X_static_test
 })
 y_pred_flat = y_pred.flatten()
 y_test_flat = y_test.flatten()
-
-print(y_pred.shape)
-print(y_test.shape)
 
 rmse = np.sqrt(mean_squared_error(y_test_flat, y_pred_flat))
 mae = mean_absolute_error(y_test_flat, y_pred_flat)
@@ -296,16 +274,9 @@ for i in sampleIndex:
     plt.plot(y[i].squeeze(), label='True')
     plt.plot(y_pred1[i].squeeze(), label='Predicted')
     plt.ylim(0, 20)
-    plt.title("Transformer Comparison (Sample " + str(i) + ")")
+    plt.title("LSTM Comparison (Sample " + str(i) + ")")
     plt.legend()
     plt.show()
 
 print("total distance sum is : " + str(distanceSum) )
-
-plt.plot(history.history["loss"], label="train_loss")
-plt.plot(history.history["val_loss"], label="val_loss")
-plt.legend()
-plt.show()
-
-plot_model(model, to_file="model.png", show_shapes=True, show_layer_names=True)
 
