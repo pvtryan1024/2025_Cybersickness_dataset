@@ -198,7 +198,7 @@ model.compile(optimizer='adam', loss='mse', metrics=['mae'])
 model.summary()
 
 # Time-series features (first 8 columns)
-X_ts = X[:, :, [0,1] ]  # shape: (429, 420, 8)
+X_ts = X[:, :, [0,2] ]  # shape: (429, 420, 8)
 
 # Static features (last 3 columns, just from first timestep since they don't vary)
 X_static = X[:, 0, 7:]  # shape: (429, 3)
