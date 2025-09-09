@@ -206,7 +206,7 @@ model_lstm = Sequential([
     TimeDistributed(Dense(1))  # predict 1 value per timestep
 ])
 
-model_lstm.compile(optimizer='adam', loss='mse')
+model_lstm.compile(optimizer='adam', loss='mse', metrics=['mae'])
 
 # Model summary
 model_lstm.summary()

@@ -48,6 +48,39 @@ csv_files = glob.glob(dir_path + '/*.csv')
 # axis_df = pd.read_csv(default_csv[0], header=None)
 # axis_df = axis_df[[8,9,10,11]]
 # print(axis_df)
+def calculate_smape(actual, predicted):
+    """
+    Calculates the Symmetric Mean Absolute Percentage Error (SMAPE).
+
+    Args:
+        actual (list or np.array): A list or NumPy array of actual values.
+        predicted (list or np.array): A list or NumPy array of predicted values.
+
+    Returns:
+        float: The SMAPE value as a percentage.
+    """
+    actual = np.array(actual)
+    predicted = np.array(predicted)
+
+    # Calculate the absolute differences between predicted and actual values
+    abs_diff = np.abs(predicted - actual)
+
+    # Calculate the sum of absolute actual and predicted values, divided by 2
+    denominator = (np.abs(actual) + np.abs(predicted)) / 2
+
+    # Handle cases where the denominator might be zero to avoid division errors
+    # A common approach is to set the error to 0 for such points if both actual and predicted are 0,
+    # or to a very large number if one is non-zero and the other is zero.
+    # For simplicity here, we'll avoid division by zero by setting the contribution to 0 if denominator is 0.
+    # More robust handling might involve a small epsilon.
+    smape_components = np.zeros_like(abs_diff, dtype=float)
+    non_zero_denominator_indices = denominator != 0
+    smape_components[non_zero_denominator_indices] = abs_diff[non_zero_denominator_indices] / denominator[non_zero_denominator_indices]
+
+    # Calculate the mean of the components and multiply by 100 for percentage
+    smape = np.mean(smape_components) * 100
+
+    return smape
 
 def bin_value(value):
     if(value < 4):
@@ -219,11 +252,13 @@ y_test_flat = y_test.flatten()
 rmse = np.sqrt(mean_squared_error(y_test_flat, y_pred_flat))
 mae = mean_absolute_error(y_test_flat, y_pred_flat)
 r2 = r2_score(y_test_flat, y_pred_flat)
+smape_value = calculate_smape(y_test_flat, y_pred_flat)
+
 
 print(f"Test RMSE: {rmse:.4f}")
 print(f"Test MAE:  {mae:.4f}")
 print(f"R² Score:  {r2:.4f}")
-
+print(f"Test SMAPE: {smape_value:.2f}%")
 
 y_pred1 = model.predict({
     'time_series_input': X_ts,

@@ -53,7 +53,39 @@ combined_df = pd.DataFrame()
 # axis_df = pd.read_csv(default_csv[0], header=None)
 # axis_df = axis_df[[8,9,10,11]]
 # print(axis_df)
+def calculate_smape(actual, predicted):
+    """
+    Calculates the Symmetric Mean Absolute Percentage Error (SMAPE).
 
+    Args:
+        actual (list or np.array): A list or NumPy array of actual values.
+        predicted (list or np.array): A list or NumPy array of predicted values.
+
+    Returns:
+        float: The SMAPE value as a percentage.
+    """
+    actual = np.array(actual)
+    predicted = np.array(predicted)
+
+    # Calculate the absolute differences between predicted and actual values
+    abs_diff = np.abs(predicted - actual)
+
+    # Calculate the sum of absolute actual and predicted values, divided by 2
+    denominator = (np.abs(actual) + np.abs(predicted)) / 2
+
+    # Handle cases where the denominator might be zero to avoid division errors
+    # A common approach is to set the error to 0 for such points if both actual and predicted are 0,
+    # or to a very large number if one is non-zero and the other is zero.
+    # For simplicity here, we'll avoid division by zero by setting the contribution to 0 if denominator is 0.
+    # More robust handling might involve a small epsilon.
+    smape_components = np.zeros_like(abs_diff, dtype=float)
+    non_zero_denominator_indices = denominator != 0
+    smape_components[non_zero_denominator_indices] = abs_diff[non_zero_denominator_indices] / denominator[non_zero_denominator_indices]
+
+    # Calculate the mean of the components and multiply by 100 for percentage
+    smape = np.mean(smape_components) * 100
+
+    return smape
 
 
 def bin_value(value):
@@ -237,14 +269,23 @@ sickness_y_pred = regr.predict(X_test)
 
 # The coefficients
 print("Coefficients: ", regr.coef_)
-# The mean absolute error
-print("Mean Absolute error:%.2f" % mean_absolute_error(y_test, sickness_y_pred))
-# The mean squared error
-print("Mean squared error: %.2f" % mean_squared_error(y_test, sickness_y_pred))
-# The coefficient of determination: 1 is perfect prediction
-print("Coefficient of determination: %.2f" % r2_score(y_test, sickness_y_pred))
+# # The mean absolute error
+# print("Mean Absolute error:%.2f" % mean_absolute_error(y_test, sickness_y_pred))
+# # The mean squared error
+# print("Mean squared error: %.2f" % mean_squared_error(y_test, sickness_y_pred))
+# # The coefficient of determination: 1 is perfect prediction
+# print("Coefficient of determination: %.2f" % r2_score(y_test, sickness_y_pred))
 
 # print(" ",  regr.score(X_test,y_test))
+rmse = np.sqrt(mean_squared_error(y_test, sickness_y_pred))
+mae = mean_absolute_error(y_test, sickness_y_pred)
+r2 = r2_score(y_test, sickness_y_pred)
+smape_value = calculate_smape(y_test, sickness_y_pred)
+
+print(f"Test RMSE: {rmse:.4f}")
+print(f"Test MAE:  {mae:.4f}")
+print(f"R² Score:  {r2:.4f}")
+print(f"Test SMAPE: {smape_value:.2f}%")
 
 
 sampleIndex = [10,20,30,40,50,60,70,80,90,100]

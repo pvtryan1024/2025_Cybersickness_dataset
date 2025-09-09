@@ -54,39 +54,6 @@ combined_df = pd.DataFrame()
 # axis_df = axis_df[[8,9,10,11]]
 # print(axis_df)
 
-def calculate_smape(actual, predicted):
-    """
-    Calculates the Symmetric Mean Absolute Percentage Error (SMAPE).
-
-    Args:
-        actual (list or np.array): A list or NumPy array of actual values.
-        predicted (list or np.array): A list or NumPy array of predicted values.
-
-    Returns:
-        float: The SMAPE value as a percentage.
-    """
-    actual = np.array(actual)
-    predicted = np.array(predicted)
-
-    # Calculate the absolute differences between predicted and actual values
-    abs_diff = np.abs(predicted - actual)
-
-    # Calculate the sum of absolute actual and predicted values, divided by 2
-    denominator = (np.abs(actual) + np.abs(predicted)) / 2
-
-    # Handle cases where the denominator might be zero to avoid division errors
-    # A common approach is to set the error to 0 for such points if both actual and predicted are 0,
-    # or to a very large number if one is non-zero and the other is zero.
-    # For simplicity here, we'll avoid division by zero by setting the contribution to 0 if denominator is 0.
-    # More robust handling might involve a small epsilon.
-    smape_components = np.zeros_like(abs_diff, dtype=float)
-    non_zero_denominator_indices = denominator != 0
-    smape_components[non_zero_denominator_indices] = abs_diff[non_zero_denominator_indices] / denominator[non_zero_denominator_indices]
-
-    # Calculate the mean of the components and multiply by 100 for percentage
-    smape = np.mean(smape_components) * 100
-
-    return smape
 
 
 def bin_value(value):
@@ -174,7 +141,9 @@ for csv_file in csv_files:
     y_list.append(y)  # or y[-1] if you want to predict the last value only
 
 # Convert lists to arrays
-X = np.stack(X_list)  # shape: (num_samples, 400, 6)
+# X = np.stack(X_list)  # shape: (num_samples, 400, 7)
+# print(X.shape)
+X = np.random.rand(427,420,11)
 y = np.stack(y_list)  # shape: (num_samples, 400) or (num_samples,) depending on choice
 y = y[:, :, np.newaxis]  # shape becomes (num_samples, 400, 1)
 
@@ -190,13 +159,13 @@ time_steps = 420
 time_features = 7
 static_features = 4
 model_dim = 64
-num_heads = 16
+num_heads = 4
 dropout_rate = 0.2
 
 
 # --- Inputs ---
-time_input = Input(shape=(time_steps, time_features), name='time_series_input')   # (420, 8)
-
+time_input = Input(shape=(time_steps, time_features), name='time_series_input')   # (420, 7)
+static_input = Input(shape=(static_features,), name='static_input')               # (4,)
 
 
 # --- Transformer Block ---
@@ -211,19 +180,18 @@ x = LayerNormalization()(x + ffn_output)
 # --- Global Pooling (combine time steps) ---
 x = GlobalAveragePooling1D()(x)  # Shape: (batch, model_dim)
 
+# --- Process static input ---
+s = Dense(16, activation='relu')(static_input)
 
-# output = Dense(1, name='regression_output')(combined)
-hidden0 = Dense(64, activation='relu')(x)
-hidden1 = Dense(128, activation='relu')(hidden0)
-hidden2 = Dense(64, activation='relu')(hidden1)
-
+# --- Concatenate time + static features ---
+combined = Concatenate()([x, s])
 
 # --- Output layer for regression ---
 # output = Dense(1, name='regression_output')(combined)
-output = Dense(420, name='regression_output')(x)
+output = Dense(420, name='regression_output')(combined)
 
 # --- Build model ---
-model = Model(inputs=[time_input], outputs=output)
+model = Model(inputs=[time_input, static_input], outputs=output)
 
 # --- Compile ---
 model.compile(optimizer='adam', loss='mse', metrics=['mae'])
@@ -264,8 +232,8 @@ print(X_other[0])
 X_static_scaled = np.concatenate([X_numeric_scaled, X_other], axis=1)
 
 
-X_ts_train, X_ts_test, y_train, y_test = train_test_split(
-    X_ts, y, test_size=0.2, random_state=42
+X_ts_train, X_ts_test, X_static_train, X_static_test, y_train, y_test = train_test_split(
+    X_ts, X_static_scaled, y, test_size=0.2, random_state=42
 )
 
 # # model_cnn.fit(X_train, y_train, epochs=30, batch_size=32, validation_data=(X_test, y_test))
@@ -281,13 +249,13 @@ X_ts_train, X_ts_test, y_train, y_test = train_test_split(
 # )
 
 # y = your target variable, shape: (429,)
-history = model.fit([X_ts], y, epochs=30, batch_size=16, validation_split=0.2)
+history = model.fit([X_ts, X_static_scaled], y, epochs=30, batch_size=16, validation_split=0.2)
 
 # y_pred = model_cnn.predict(X_test)
 # y_pred = model.predict(X_test)
 y_pred = model.predict({
-    'time_series_input': X_ts_test
-
+    'time_series_input': X_ts_test,
+    'static_input': X_static_test
 })
 y_pred_flat = y_pred.flatten()
 y_test_flat = y_test.flatten()
@@ -298,12 +266,10 @@ print(y_test.shape)
 rmse = np.sqrt(mean_squared_error(y_test_flat, y_pred_flat))
 mae = mean_absolute_error(y_test_flat, y_pred_flat)
 r2 = r2_score(y_test_flat, y_pred_flat)
-smape_value = calculate_smape(y_test_flat, y_pred_flat)
 
 print(f"Test RMSE: {rmse:.4f}")
 print(f"Test MAE:  {mae:.4f}")
 print(f"R² Score:  {r2:.4f}")
-print(f"Test SMAPE: {smape_value:.2f}%")
 
 
 y_pred1 = model.predict({

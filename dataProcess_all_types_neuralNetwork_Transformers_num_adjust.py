@@ -12,6 +12,7 @@ from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
 from scipy.optimize import minimize 
 from scipy.optimize import NonlinearConstraint
 import tensorflow as tf
+import tensorflow.keras.backend as K
 from tensorflow.keras import layers, Model
 from tensorflow.keras.models import Sequential,Model
 from tensorflow.keras.utils import plot_model
@@ -54,6 +55,13 @@ combined_df = pd.DataFrame()
 # axis_df = axis_df[[8,9,10,11]]
 # print(axis_df)
 
+def smape_metric(y_true, y_pred):
+    epsilon = 0.1  # Small constant to prevent division by zero
+    numerator = K.abs(y_pred - y_true)
+    denominator = (K.abs(y_true) + K.abs(y_pred)) / 2 + epsilon
+    return K.mean(numerator / denominator) * 100
+
+
 def calculate_smape(actual, predicted):
     """
     Calculates the Symmetric Mean Absolute Percentage Error (SMAPE).
@@ -87,7 +95,6 @@ def calculate_smape(actual, predicted):
     smape = np.mean(smape_components) * 100
 
     return smape
-
 
 def bin_value(value):
     if(value < 4):
@@ -196,7 +203,7 @@ dropout_rate = 0.2
 
 # --- Inputs ---
 time_input = Input(shape=(time_steps, time_features), name='time_series_input')   # (420, 8)
-
+static_input = Input(shape=(static_features,), name='static_input')               # (3,)
 
 
 # --- Transformer Block ---
@@ -211,19 +218,22 @@ x = LayerNormalization()(x + ffn_output)
 # --- Global Pooling (combine time steps) ---
 x = GlobalAveragePooling1D()(x)  # Shape: (batch, model_dim)
 
+# --- Process static input ---
+s = Dense(16, activation='relu')(static_input)
 
-# output = Dense(1, name='regression_output')(combined)
-hidden0 = Dense(64, activation='relu')(x)
+# --- Concatenate time + static features ---
+combined = Concatenate()([x, s])
+
+hidden0 = Dense(64, activation='relu')(combined)
 hidden1 = Dense(128, activation='relu')(hidden0)
 hidden2 = Dense(64, activation='relu')(hidden1)
 
-
 # --- Output layer for regression ---
 # output = Dense(1, name='regression_output')(combined)
-output = Dense(420, name='regression_output')(x)
+output = Dense(420, name='regression_output')(hidden2)
 
 # --- Build model ---
-model = Model(inputs=[time_input], outputs=output)
+model = Model(inputs=[time_input, static_input], outputs=output)
 
 # --- Compile ---
 model.compile(optimizer='adam', loss='mse', metrics=['mae'])
@@ -264,8 +274,8 @@ print(X_other[0])
 X_static_scaled = np.concatenate([X_numeric_scaled, X_other], axis=1)
 
 
-X_ts_train, X_ts_test, y_train, y_test = train_test_split(
-    X_ts, y, test_size=0.2, random_state=42
+X_ts_train, X_ts_test, X_static_train, X_static_test, y_train, y_test = train_test_split(
+    X_ts, X_static_scaled, y, test_size=0.2, random_state=42
 )
 
 # # model_cnn.fit(X_train, y_train, epochs=30, batch_size=32, validation_data=(X_test, y_test))
@@ -281,13 +291,13 @@ X_ts_train, X_ts_test, y_train, y_test = train_test_split(
 # )
 
 # y = your target variable, shape: (429,)
-history = model.fit([X_ts], y, epochs=30, batch_size=16, validation_split=0.2)
+history = model.fit([X_ts, X_static_scaled], y, epochs=30, batch_size=16, validation_split=0.2)
 
 # y_pred = model_cnn.predict(X_test)
 # y_pred = model.predict(X_test)
 y_pred = model.predict({
-    'time_series_input': X_ts_test
-
+    'time_series_input': X_ts_test,
+    'static_input': X_static_test
 })
 y_pred_flat = y_pred.flatten()
 y_test_flat = y_test.flatten()
@@ -304,7 +314,6 @@ print(f"Test RMSE: {rmse:.4f}")
 print(f"Test MAE:  {mae:.4f}")
 print(f"R² Score:  {r2:.4f}")
 print(f"Test SMAPE: {smape_value:.2f}%")
-
 
 y_pred1 = model.predict({
     'time_series_input': X_ts,
