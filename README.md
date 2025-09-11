@@ -1,4 +1,4 @@
-# VRST-2025-Virtual-motion-profile-and-cybersickness-dataset
+# 2025-Virtual-motion-profile-and-cybersickness-dataset
 A dataset created from 4 minute VR experience with 0.5 second interval of Fast Motion Sickness scale inputs
 
 Each csv file is composed of the following
