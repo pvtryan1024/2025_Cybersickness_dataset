@@ -1,4 +1,4 @@
-A dataset created from 4 minute VR experience with 0.5 second interval of Fast Motion Sickness scale inputs
+A dataset created from a 4-minute VR experience with a 0.5-second interval of Fast Motion Sickness scale inputs
 
 Each csv file is composed of the following
 
@@ -14,3 +14,5 @@ The test environment has been requested multiple times; the video link is provid
 https://drive.google.com/file/d/1KPVixU-WmrTpQA7QWYkSwJ8QLw2otMIC/view?usp=sharing
 
 Caution! The resolution of the video is not what the user sees within the VR.
+
+"Predicting Cybersickness Trend and Extent Based on FMS Labeled Dataset" is 
