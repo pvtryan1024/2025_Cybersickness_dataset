@@ -8,3 +8,9 @@ Each csv file is composed of the following
 
 
 It is recommended to cut the data at the 420th row. The visual movement stops around that point.
+
+The test environment has been requested multiple times; the video link is provided below.
+
+https://drive.google.com/file/d/1KPVixU-WmrTpQA7QWYkSwJ8QLw2otMIC/view?usp=sharing
+
+Caution! The resolution of the video is not what the user sees within the VR.
