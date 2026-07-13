@@ -15,4 +15,4 @@ https://drive.google.com/file/d/1KPVixU-WmrTpQA7QWYkSwJ8QLw2otMIC/view?usp=shari
 
 Caution! The resolution of the video is not what the user sees within the VR.
 
-The dataset is from the work "Predicting Cybersickness Trend and Extent Based on FMS Labeled Dataset" 
+The dataset is the foundation of the work "Predicting Cybersickness Trend and Extent Based on FMS Labeled Dataset" 
